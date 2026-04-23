@@ -4,8 +4,9 @@ import re
 
 st.set_page_config(page_title="생활 속의 인공지능 마스터", layout="centered")
 
-# --- [174문제 데이터 베이스] ---
-# 잼님, 이 아래 따옴표 사이에 제가 밑에 따로 드리는 174문제를 전부 붙여넣으세요!
+# ==========================================
+# 📋 여기에 붙여넣어주세요르르!!! (따옴표 사이)
+# ==========================================
 QUIZ_DATA = """
 Q1: 인공지능의 정의는 무엇인가요?
 - 인공적으로 만들어낸 지능
@@ -1280,8 +1281,10 @@ Q174: LM 사용 시 보안을 위해 가장 주의해야 할 사항은 무엇인
 - 유료 버전만 사용하기
 Answer: 회사 기밀이나 개인정보를 프롬프트에 직접 입력하지 않기
 """
+# ==========================================
 
-# --- [로직 시작] ---
+# --- 퀴즈 처리 로직 (여기서부터는 절대 수정 금지!) ---
+
 if 'quiz_bank' not in st.session_state:
     matches = re.findall(r"(Q\d+:.*?Answer:.*?(?=\nQ\d+:|$))", QUIZ_DATA, re.DOTALL | re.IGNORECASE)
     bank = []
@@ -1295,34 +1298,40 @@ if 'quiz_bank' not in st.session_state:
             if q_text and opts: bank.append({"q": q_text, "o": opts, "a": ans})
         except: continue
     st.session_state.quiz_bank = bank
-    if bank: st.session_state.current_quiz = random.choice(bank)
+
+if 'current_quiz' not in st.session_state and st.session_state.get('quiz_bank'):
+    st.session_state.current_quiz = random.choice(st.session_state.quiz_bank)
 
 st.title("📘 생활 속의 인공지능 퀴즈")
-st.caption("등굣길에도, 학교에서도 열공하세요! 📖")
+st.caption("등굣길 100점 방지 위원회 (?)")
 
-if st.session_state.quiz_bank and st.session_state.current_quiz:
-    st.write(f"📊 총 문제 수: **{len(st.session_state.quiz_bank)}개**")
+if st.session_state.get('quiz_bank') and st.session_state.get('current_quiz'):
     q = st.session_state.current_quiz
-    
-    with st.container(border=True):
+    st.write(f"📊 총 문제 수: **{len(st.session_state.quiz_bank)}개**")
+
+    # 폼을 사용해서 체크박스가 바로 풀리지 않게 고정합니다.
+    with st.form(key='quiz_form'):
         st.subheader(f"Q. {q['q']}")
         user_selections = []
-        for opt in q['o']:
-            if st.checkbox(opt, key=f"opt_{opt}_{random.random()}"):
+        for i, opt in enumerate(q['o']):
+            # 문제마다 고유한 키를 주어 상태를 유지합니다.
+            if st.checkbox(opt, key=f"chk_{q['q']}_{i}"):
                 user_selections.append(opt)
         
-        col1, col2 = st.columns(2)
-        with col1:
-            if st.button("✅ 정답 확인", use_container_width=True):
-                if not user_selections:
-                    st.warning("답을 골라주세요!")
+        submit = st.form_submit_button("✅ 정답 확인")
+        
+        if submit:
+            if not user_selections:
+                st.warning("답을 골라주세요!")
+            else:
+                if set(user_selections) == set(q['a']):
+                    st.balloons()
+                    st.success("정답입니다! 🎉")
                 else:
-                    if set(user_selections) == set(q['a']):
-                        st.balloons()
-                        st.success("정답입니다!")
-                    else:
-                        st.error(f"오답! 정답: {' & '.join(q['a'])}")
-        with col2:
-            if st.button("➡️ 다음 문제", use_container_width=True):
-                st.session_state.current_quiz = random.choice(st.session_state.quiz_bank)
-                st.rerun()
+                    st.error(f"오답입니다! 😭 정답: {' & '.join(q['a'])}")
+
+    if st.button("➡️ 다음 문제 넘어가기"):
+        st.session_state.current_quiz = random.choice(st.session_state.quiz_bank)
+        st.rerun()
+else:
+    st.error("문제가 로드되지 않았습니다. QUIZ_DATA 형식을 확인해주세요!")
