@@ -4,8 +4,7 @@ import re
 
 st.set_page_config(page_title="생활 속의 인공지능 마스터", layout="centered")
 
-# --- [데이터 베이스] ---
-# 📋 여기에 잼님의 182문제를 따옴표 사이에 넣어주세요르르!
+# --- 퀴즈 데이터 (기존 182문제 그대로 유지) ---
 QUIZ_DATA = """
 Q1: 인공지능의 정의는 무엇인가요?
 - 인공적으로 만들어낸 지능
@@ -1278,60 +1277,46 @@ Q174: LM 사용 시 보안을 위해 가장 주의해야 할 사항은 무엇인
 - 문법에 맞춰 질문하기
 - 영어로만 질문하기
 - 유료 버전만 사용하기
-Answer: 회사 기밀이나 개인정보를 프롬프트에 직접 입력하지 않기
+Answer: 회사 기밀이나 개인정보를 프롬프트에 직접 입력하지 않기)
 """
 
-# --- 퀴즈 데이터 로딩 로직 (마이너스 숫자 완벽 대응 버전) ---
 if 'quiz_bank' not in st.session_state:
-    # 1. 문제를 Q번호 기준으로 정확히 쪼갭니다.
     blocks = re.split(r'\n(?=Q\d+:)', QUIZ_DATA.strip())
     bank = []
     for block in blocks:
         try:
             lines = [l.strip() for l in block.split('\n') if l.strip()]
             if not lines: continue
-            
-            # 질문 추출
             q_text = re.sub(r'^Q\d+:\s*', '', lines[0])
-            
-            # 정답 추출
             ans_line = [l for l in lines if l.lower().startswith('answer:')]
             if not ans_line: continue
             answer_text = re.sub(r'^answer:\s*', '', ans_line[0], flags=re.IGNORECASE).strip()
-            # 다중 정답 처리 (& 기준)
             answers = [a.strip() for a in answer_text.split('&')]
-            
-            # 보기 추출 (숫자 앞의 마이너스를 보호하기 위해 '- ' 패턴만 찾음)
-            opts = []
-            for l in lines:
-                if l.startswith('- '):
-                    opts.append(l[2:].strip()) # 앞의 '- ' 두 글자만 딱 제거
-            
+            opts = [l[2:].strip() for l in lines if l.startswith('- ')]
             if q_text and opts:
                 bank.append({"q": q_text, "o": opts, "a": answers})
-        except:
-            continue
+        except: continue
     st.session_state.quiz_bank = bank
 
-# --- 현재 문제 세션 유지 ---
 if 'current_quiz' not in st.session_state and st.session_state.get('quiz_bank'):
     st.session_state.current_quiz = random.choice(st.session_state.quiz_bank)
 
 st.title("📘 생활 속의 인공지능 퀴즈")
-st.caption("마이너스 정답도 이제 완벽하게 체크합니다! ✅")
 
 if st.session_state.get('quiz_bank') and st.session_state.get('current_quiz'):
     q = st.session_state.current_quiz
-    st.write(f"📊 총 문제 수: **{len(st.session_state.quiz_bank)}개**")
-
-    # st.form을 사용하여 체크박스 상태 유지
-    with st.form(key=f"quiz_form_{q['q']}"):
+    
+    # ⭐ 핵심: 문제마다 고유한 폼 키를 주어 상태를 완전히 분리합니다.
+    # 질문 텍스트를 해시화하거나 섞어서 이름표를 만듭니다.
+    form_key = f"quiz_form_{hash(q['q'])}"
+    
+    with st.form(key=form_key):
         st.subheader(f"Q. {q['q']}")
         user_selections = []
         
-        # 보기 출력
         for i, opt in enumerate(q['o']):
-            if st.checkbox(opt, key=f"chk_{i}"):
+            # ⭐ 체크박스 키에 질문 내용을 포함시켜서 문제가 바뀌면 체크도 풀리게 합니다.
+            if st.checkbox(opt, key=f"chk_{hash(q['q'])}_{i}"):
                 user_selections.append(opt)
         
         submit = st.form_submit_button("✅ 정답 확인")
@@ -1340,7 +1325,6 @@ if st.session_state.get('quiz_bank') and st.session_state.get('current_quiz'):
             if not user_selections:
                 st.warning("답을 골라주세요!")
             else:
-                # 정답 비교 (대소문자 및 공백 제거 후 비교)
                 if set(user_selections) == set(q['a']):
                     st.balloons()
                     st.success("정답입니다! 🎉")
@@ -1350,5 +1334,3 @@ if st.session_state.get('quiz_bank') and st.session_state.get('current_quiz'):
     if st.button("➡️ 다음 문제 넘어가기"):
         st.session_state.current_quiz = random.choice(st.session_state.quiz_bank)
         st.rerun()
-else:
-    st.error("문제가 로드되지 않았습니다. QUIZ_DATA 내용을 확인해주세요!")
