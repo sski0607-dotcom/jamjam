@@ -1292,11 +1292,12 @@ if 'quiz_bank' not in st.session_state:
             answer_text = re.sub(r'^answer:\s*', '', ans_line[0], flags=re.IGNORECASE).strip()
             answers = [a.strip() for a in answer_text.split('&')]
             opts = [l[2:].strip() for l in lines if l.startswith('- ')]
-            if q_text and opts: bank.append({"q": q_text, "o": opts, "a": answers})
+            if q_text and opts: bank.append({"q": q_text, "o": opts, "a": answers, "id": len(bank)})
         except: continue
     st.session_state.quiz_bank = bank
+    st.session_state.wrong_answers = [] # 틀린 문제 ID 저장용
 
-# 2. 모드 선택 및 초기화
+# 2. 모드 선택
 if 'mode' not in st.session_state:
     st.title("🚀 열공 모드를 선택하세요!")
     c1, c2 = st.columns(2)
@@ -1304,15 +1305,17 @@ if 'mode' not in st.session_state:
         if st.button("📖 예제 풀기", use_container_width=True):
             st.session_state.mode, st.session_state.current_idx, st.session_state.score = 'study', 0, 0
             st.session_state.playlist = random.sample(range(len(st.session_state.quiz_bank)), len(st.session_state.quiz_bank))
+            st.session_state.wrong_answers = []
             st.rerun()
     with c2:
         if st.button("📝 시험 연습", use_container_width=True):
             st.session_state.mode, st.session_state.current_idx, st.session_state.score = 'test', 0, 0
             st.session_state.playlist = random.sample(range(len(st.session_state.quiz_bank)), len(st.session_state.quiz_bank))
+            st.session_state.wrong_answers = []
             st.rerun()
     st.stop()
 
-# --- 팝업 창(Dialog) 정의 ---
+# --- 팝업 창 ---
 @st.dialog("결과 확인")
 def show_result(is_correct, correct_ans):
     if is_correct:
@@ -1324,41 +1327,56 @@ def show_result(is_correct, correct_ans):
         st.session_state.current_idx += 1
         st.rerun()
 
-# --- 메인 화면 ---
-if st.sidebar.button("🏠 모드 재선택"):
+# --- 메인 로직 ---
+if st.sidebar.button("🏠 메인으로 (초기화)"):
     for key in list(st.session_state.keys()): del st.session_state[key]
     st.rerun()
 
-# 종료 화면
-if st.session_state.current_idx >= len(st.session_state.quiz_bank):
+# 종료 및 오답 노트 화면
+if st.session_state.current_idx >= len(st.session_state.playlist):
     st.balloons()
-    st.header("🎊 모든 문제 완주!")
-    st.metric("최종 점수", f"{st.session_state.score} / {len(st.session_state.quiz_bank)}")
-    if st.button("처음으로 돌아가기"):
+    st.header("🎊 한 세트 완주 성공!")
+    st.metric("점수", f"{st.session_state.score} / {len(st.session_state.playlist)}")
+    
+    if st.session_state.wrong_answers:
+        st.warning(f"틀린 문제가 {len(st.session_state.wrong_answers)}개 있습니다.")
+        if st.button("✍️ 틀린 문제만 다시 풀기", use_container_width=True):
+            # 틀린 문제들로만 플레이리스트 새로 구성
+            st.session_state.playlist = random.sample(st.session_state.wrong_answers, len(st.session_state.wrong_answers))
+            st.session_state.wrong_answers = [] # 리스트 비우고 다시 시작
+            st.session_state.current_idx = 0
+            st.session_state.score = 0
+            st.rerun()
+    else:
+        st.success("와우! 틀린 문제가 하나도 없네요. 완벽합니다! 💯")
+
+    if st.button("🔄 전체 다시 풀기", use_container_width=True):
         for key in list(st.session_state.keys()): del st.session_state[key]
         st.rerun()
     st.stop()
 
-q = st.session_state.quiz_bank[st.session_state.playlist[st.session_state.current_idx]]
-st.caption(f"[{st.session_state.mode.upper()}] {st.session_state.current_idx + 1} / {len(st.session_state.quiz_bank)}")
+# 문제 출력
+q_idx = st.session_state.playlist[st.session_state.current_idx]
+q = st.session_state.quiz_bank[q_idx]
 
-# 퀴즈 폼
-with st.form(key=f"q_{st.session_state.current_idx}"):
+st.caption(f"[{'오답 노트' if not st.session_state.get('playlist_is_full', True) else st.session_state.mode.upper()}] {st.session_state.current_idx + 1} / {len(st.session_state.playlist)}")
+
+with st.form(key=f"q_{q_idx}_{st.session_state.current_idx}"):
     st.subheader(f"Q. {q['q']}")
     user_choices = []
     for i, opt in enumerate(q['o']):
-        # 고유 키값 생성
-        if st.checkbox(opt, key=f"c_{st.session_state.current_idx}_{i}"):
+        if st.checkbox(opt, key=f"c_{q_idx}_{i}"):
             user_choices.append(opt)
     
-    submit = st.form_submit_button("✅ 정답 확인 및 다음 문제")
-
-    if submit:
+    if st.form_submit_button("✅ 정답 확인 및 다음 문제"):
         if not user_choices:
             st.warning("답을 골라주세요!")
         else:
             is_correct = set(user_choices) == set(q['a'])
             if is_correct:
                 st.session_state.score += 1
-            # 팝업 창 띄우기
+            else:
+                # 틀린 문제의 인덱스를 저장
+                if q_idx not in st.session_state.wrong_answers:
+                    st.session_state.wrong_answers.append(q_idx)
             show_result(is_correct, ' & '.join(q['a']))
