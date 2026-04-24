@@ -4,7 +4,7 @@ import re
 
 st.set_page_config(page_title="생활 속의 인공지능 마스터", layout="centered")
 
-# --- 퀴즈 데이터 (기존 182문제 그대로 유지) ---
+# --- [데이터 베이스] ---
 QUIZ_DATA = """
 Q1: 인공지능의 정의는 무엇인가요?
 - 인공적으로 만들어낸 지능
@@ -1277,60 +1277,59 @@ Q174: LM 사용 시 보안을 위해 가장 주의해야 할 사항은 무엇인
 - 문법에 맞춰 질문하기
 - 영어로만 질문하기
 - 유료 버전만 사용하기
-Answer: 회사 기밀이나 개인정보를 프롬프트에 직접 입력하지 않기)
+Answer: 회사 기밀이나 개인정보를 프롬프트에 직접 입력하지 않기
 """
 
+# 1. 데이터 로딩 (한 번만 실행)
 if 'quiz_bank' not in st.session_state:
     blocks = re.split(r'\n(?=Q\d+:)', QUIZ_DATA.strip())
     bank = []
     for block in blocks:
         try:
             lines = [l.strip() for l in block.split('\n') if l.strip()]
-            if not lines: continue
             q_text = re.sub(r'^Q\d+:\s*', '', lines[0])
             ans_line = [l for l in lines if l.lower().startswith('answer:')]
-            if not ans_line: continue
             answer_text = re.sub(r'^answer:\s*', '', ans_line[0], flags=re.IGNORECASE).strip()
             answers = [a.strip() for a in answer_text.split('&')]
             opts = [l[2:].strip() for l in lines if l.startswith('- ')]
-            if q_text and opts:
-                bank.append({"q": q_text, "o": opts, "a": answers})
+            if q_text and opts: bank.append({"q": q_text, "o": opts, "a": answers})
         except: continue
     st.session_state.quiz_bank = bank
-
-if 'current_quiz' not in st.session_state and st.session_state.get('quiz_bank'):
-    st.session_state.current_quiz = random.choice(st.session_state.quiz_bank)
+    # ⭐ 핵심: 풀 문제 순서를 미리 무작위로 섞어서 리스트로 만듭니다.
+    st.session_state.playlist = random.sample(range(len(bank)), len(bank))
+    st.session_state.current_idx = 0
 
 st.title("📘 생활 속의 인공지능 퀴즈")
 
-if st.session_state.get('quiz_bank') and st.session_state.get('current_quiz'):
-    q = st.session_state.current_quiz
+# 2. 문제 가져오기 로직
+if st.session_state.quiz_bank:
+    # 현재 순서(current_idx)에 맞는 문제를 플레이리스트에서 가져옵니다.
+    q_idx = st.session_state.playlist[st.session_state.current_idx]
+    q = st.session_state.quiz_bank[q_idx]
     
-    # ⭐ 핵심: 문제마다 고유한 폼 키를 주어 상태를 완전히 분리합니다.
-    # 질문 텍스트를 해시화하거나 섞어서 이름표를 만듭니다.
-    form_key = f"quiz_form_{hash(q['q'])}"
-    
-    with st.form(key=form_key):
+    st.write(f"📊 현재 **{st.session_state.current_idx + 1}**번째 문제 / 총 {len(st.session_state.quiz_bank)}개")
+
+    with st.form(key=f"quiz_form_{hash(q['q'])}"):
         st.subheader(f"Q. {q['q']}")
         user_selections = []
-        
         for i, opt in enumerate(q['o']):
-            # ⭐ 체크박스 키에 질문 내용을 포함시켜서 문제가 바뀌면 체크도 풀리게 합니다.
             if st.checkbox(opt, key=f"chk_{hash(q['q'])}_{i}"):
                 user_selections.append(opt)
         
-        submit = st.form_submit_button("✅ 정답 확인")
-        
-        if submit:
-            if not user_selections:
-                st.warning("답을 골라주세요!")
-            else:
-                if set(user_selections) == set(q['a']):
-                    st.balloons()
-                    st.success("정답입니다! 🎉")
-                else:
-                    st.error(f"오답입니다! 😭 정답: {' & '.join(q['a'])}")
+        if st.form_submit_button("✅ 정답 확인"):
+            if not user_selections: st.warning("답을 골라주세요!")
+            elif set(user_selections) == set(q['a']):
+                st.balloons(); st.success("정답입니다! 🎉")
+            else: st.error(f"오답입니다! 😭 정답: {' & '.join(q['a'])}")
 
     if st.button("➡️ 다음 문제 넘어가기"):
-        st.session_state.current_quiz = random.choice(st.session_state.quiz_bank)
+        # 다음 번호로 이동
+        st.session_state.current_idx += 1
+        
+        # 182개를 다 풀었으면? 다시 섞어서 0번부터 시작!
+        if st.session_state.current_idx >= len(st.session_state.quiz_bank):
+            st.session_state.playlist = random.sample(range(len(st.session_state.quiz_bank)), len(st.session_state.quiz_bank))
+            st.session_state.current_idx = 0
+            st.toast("와! 182문제를 모두 풀었습니다. 다시 새 세트를 시작합니다!")
+        
         st.rerun()
