@@ -1296,7 +1296,7 @@ if 'quiz_bank' not in st.session_state:
         except: continue
     st.session_state.quiz_bank = bank
 
-# 2. 모드 선택 화면
+# 2. 모드 선택 및 초기화
 if 'mode' not in st.session_state:
     st.title("🚀 열공 모드를 선택하세요!")
     c1, c2 = st.columns(2)
@@ -1312,7 +1312,19 @@ if 'mode' not in st.session_state:
             st.rerun()
     st.stop()
 
-# --- 퀴즈 로직 ---
+# --- 팝업 창(Dialog) 정의 ---
+@st.dialog("결과 확인")
+def show_result(is_correct, correct_ans):
+    if is_correct:
+        st.success("🎉 정답입니다!")
+    else:
+        st.error(f"😭 오답입니다!\n\n정답: **{correct_ans}**")
+    
+    if st.button("확인하고 다음 문제로 >>", use_container_width=True):
+        st.session_state.current_idx += 1
+        st.rerun()
+
+# --- 메인 화면 ---
 if st.sidebar.button("🏠 모드 재선택"):
     for key in list(st.session_state.keys()): del st.session_state[key]
     st.rerun()
@@ -1320,9 +1332,9 @@ if st.sidebar.button("🏠 모드 재선택"):
 # 종료 화면
 if st.session_state.current_idx >= len(st.session_state.quiz_bank):
     st.balloons()
-    st.header("🎊 완주 성공!")
+    st.header("🎊 모든 문제 완주!")
     st.metric("최종 점수", f"{st.session_state.score} / {len(st.session_state.quiz_bank)}")
-    if st.button("처음으로"):
+    if st.button("처음으로 돌아가기"):
         for key in list(st.session_state.keys()): del st.session_state[key]
         st.rerun()
     st.stop()
@@ -1330,32 +1342,23 @@ if st.session_state.current_idx >= len(st.session_state.quiz_bank):
 q = st.session_state.quiz_bank[st.session_state.playlist[st.session_state.current_idx]]
 st.caption(f"[{st.session_state.mode.upper()}] {st.session_state.current_idx + 1} / {len(st.session_state.quiz_bank)}")
 
-# 폼 사용
+# 퀴즈 폼
 with st.form(key=f"q_{st.session_state.current_idx}"):
     st.subheader(f"Q. {q['q']}")
     user_choices = []
     for i, opt in enumerate(q['o']):
+        # 고유 키값 생성
         if st.checkbox(opt, key=f"c_{st.session_state.current_idx}_{i}"):
             user_choices.append(opt)
     
-    # 시험 모드에선 '다음 문제(채점)' 버튼 하나로 통일
-    btn_label = "✅ 정답 확인" if st.session_state.mode == 'study' else "➡️ 다음 문제 (채점)"
-    submit = st.form_submit_button(btn_label)
+    submit = st.form_submit_button("✅ 정답 확인 및 다음 문제")
 
     if submit:
-        is_correct = set(user_choices) == set(q['a'])
-        if is_correct:
-            st.session_state.score += 1
-            st.success("정답입니다! 🎉")
+        if not user_choices:
+            st.warning("답을 골라주세요!")
         else:
-            st.error(f"오답입니다! 😭 정답: {' & '.join(q['a'])}")
-        
-        # 여기서 잼님의 핵심 요구사항! 
-        # 메시지를 보여준 뒤, 사용자가 '확인'하면 다음으로 넘어가게 하거나 잠시 후 이동
-        st.session_state.answered = True
-
-if st.session_state.get('answered'):
-    if st.button("다음 문제로 이동하기 >>"):
-        st.session_state.current_idx += 1
-        del st.session_state.answered
-        st.rerun()
+            is_correct = set(user_choices) == set(q['a'])
+            if is_correct:
+                st.session_state.score += 1
+            # 팝업 창 띄우기
+            show_result(is_correct, ' & '.join(q['a']))
