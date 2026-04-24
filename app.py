@@ -2,7 +2,7 @@ import streamlit as st
 import random
 import re
 
-st.set_page_config(page_title="생활 속의 인공지능 마스터", layout="centered")
+st.set_page_config(page_title="생활속의 인공지능 마스터", layout="centered")
 
 # --- [데이터 베이스] ---
 QUIZ_DATA = """
@@ -1280,7 +1280,7 @@ Q174: LM 사용 시 보안을 위해 가장 주의해야 할 사항은 무엇인
 Answer: 회사 기밀이나 개인정보를 프롬프트에 직접 입력하지 않기
 """
 
-# 1. 데이터 로딩 (한 번만 실행)
+# 1. 데이터 로딩 (최초 1회)
 if 'quiz_bank' not in st.session_state:
     blocks = re.split(r'\n(?=Q\d+:)', QUIZ_DATA.strip())
     bank = []
@@ -1295,41 +1295,84 @@ if 'quiz_bank' not in st.session_state:
             if q_text and opts: bank.append({"q": q_text, "o": opts, "a": answers})
         except: continue
     st.session_state.quiz_bank = bank
-    # ⭐ 핵심: 풀 문제 순서를 미리 무작위로 섞어서 리스트로 만듭니다.
-    st.session_state.playlist = random.sample(range(len(bank)), len(bank))
-    st.session_state.current_idx = 0
 
-st.title("📘 생활 속의 인공지능 퀴즈")
-
-# 2. 문제 가져오기 로직
-if st.session_state.quiz_bank:
-    # 현재 순서(current_idx)에 맞는 문제를 플레이리스트에서 가져옵니다.
-    q_idx = st.session_state.playlist[st.session_state.current_idx]
-    q = st.session_state.quiz_bank[q_idx]
+# 2. 모드 선택 화면 (모드를 정하지 않았을 때만 표시)
+if 'mode' not in st.session_state:
+    st.title("🚀 열공 모드를 선택하세요!")
+    col1, col2 = st.columns(2)
     
-    st.write(f"📊 현재 **{st.session_state.current_idx + 1}**번째 문제 / 총 {len(st.session_state.quiz_bank)}개")
-
-    with st.form(key=f"quiz_form_{hash(q['q'])}"):
-        st.subheader(f"Q. {q['q']}")
-        user_selections = []
-        for i, opt in enumerate(q['o']):
-            if st.checkbox(opt, key=f"chk_{hash(q['q'])}_{i}"):
-                user_selections.append(opt)
-        
-        if st.form_submit_button("✅ 정답 확인"):
-            if not user_selections: st.warning("답을 골라주세요!")
-            elif set(user_selections) == set(q['a']):
-                st.balloons(); st.success("정답입니다! 🎉")
-            else: st.error(f"오답입니다! 😭 정답: {' & '.join(q['a'])}")
-
-    if st.button("➡️ 다음 문제 넘어가기"):
-        # 다음 번호로 이동
-        st.session_state.current_idx += 1
-        
-        # 182개를 다 풀었으면? 다시 섞어서 0번부터 시작!
-        if st.session_state.current_idx >= len(st.session_state.quiz_bank):
+    with col1:
+        if st.button("📖 예제 풀기\n(부담 없이 공부)", use_container_width=True):
+            st.session_state.mode = 'study'
             st.session_state.playlist = random.sample(range(len(st.session_state.quiz_bank)), len(st.session_state.quiz_bank))
             st.session_state.current_idx = 0
-            st.toast("와! 182문제를 모두 풀었습니다. 다시 새 세트를 시작합니다!")
-        
+            st.rerun()
+            
+    with col2:
+        if st.button("📝 시험 연습\n(점수 기록 모드)", use_container_width=True):
+            st.session_state.mode = 'test'
+            st.session_state.playlist = random.sample(range(len(st.session_state.quiz_bank)), len(st.session_state.quiz_bank))
+            st.session_state.current_idx = 0
+            st.session_state.score = 0
+            st.rerun()
+    st.stop()
+
+# --- 여기서부터는 퀴즈 진행 로직 ---
+
+# 뒤로가기(모드 재선택) 버튼
+if st.sidebar.button("🏠 모드 다시 선택"):
+    del st.session_state.mode
+    if 'score' in st.session_state: del st.session_state.score
+    st.rerun()
+
+st.title("📘 생활 속의 인공지능 퀴즈" if st.session_state.mode == 'study' else "📝 실전 모의고사")
+
+# 시험 종료 로직 (시험 모드일 때만 적용)
+if st.session_state.mode == 'test' and st.session_state.current_idx >= len(st.session_state.quiz_bank):
+    st.balloons()
+    st.header("🎊 모의고사 종료!")
+    st.metric("최종 점수", f"{st.session_state.score} / {len(st.session_state.quiz_bank)}")
+    accuracy = (st.session_state.score / len(st.session_state.quiz_bank)) * 100
+    st.write(f"정답률: **{accuracy:.1f}%**")
+    if st.button("처음으로 돌아가기"):
+        del st.session_state.mode
         st.rerun()
+    st.stop()
+
+# 퀴즈 출력
+q_idx = st.session_state.playlist[st.session_state.current_idx]
+q = st.session_state.quiz_bank[q_idx]
+
+# 진행도 표시
+st.caption(f"진행 상황: {st.session_state.current_idx + 1} / {len(st.session_state.quiz_bank)}")
+if st.session_state.mode == 'test':
+    st.write(f"현재 점수: **{st.session_state.score}**점")
+
+with st.form(key=f"quiz_form_{hash(q['q'])}"):
+    st.subheader(f"Q. {q['q']}")
+    user_selections = []
+    for i, opt in enumerate(q['o']):
+        if st.checkbox(opt, key=f"chk_{hash(q['q'])}_{i}"):
+            user_selections.append(opt)
+    
+    if st.form_submit_button("✅ 정답 확인"):
+        if not user_selections:
+            st.warning("답을 골라주세요!")
+        elif set(user_selections) == set(q['a']):
+            if st.session_state.mode == 'test' and f"ans_{st.session_state.current_idx}" not in st.session_state:
+                st.session_state.score += 1
+                st.session_state[f"ans_{st.session_state.current_idx}"] = True
+            st.success("정답입니다! 🎉")
+        else:
+            if st.session_state.mode == 'test':
+                st.session_state[f"ans_{st.session_state.current_idx}"] = True
+            st.error(f"오답입니다! 정답: {' & '.join(q['a'])}")
+
+if st.button("➡️ 다음 문제 넘어가기"):
+    st.session_state.current_idx += 1
+    # 예제 모드에서 다 풀었으면 다시 0번으로
+    if st.session_state.mode == 'study' and st.session_state.current_idx >= len(st.session_state.quiz_bank):
+        st.session_state.current_idx = 0
+        random.shuffle(st.session_state.playlist)
+        st.toast("한 바퀴 다 돌았습니다! 다시 섞어서 시작합니다.")
+    st.rerun()
